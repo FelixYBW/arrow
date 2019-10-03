@@ -31,49 +31,49 @@ namespace jni {
 namespace parquet {
 
 FileConnector::FileConnector(std::string path) {
-  filePath = path;
-  dirPath = getPathDir(path);
+  file_path_ = path;
+  dir_path_ = GetPathDir(path);
 }
 
 FileConnector::~FileConnector() {}
 
-void FileConnector::teardown() {
-  if (fileWriter) {
-    fileWriter->Close();
+void FileConnector::TearDown() {
+  if (file_writer_) {
+    file_writer_->Close();
   }
 }
 
-::arrow::Status FileConnector::openReadable(bool useHdfs3) {
-  ::arrow::Status msg = ::arrow::io::ReadableFile::Open(filePath, &fileReader);
+::arrow::Status FileConnector::OpenReadable(bool option) {
+  ::arrow::Status msg = ::arrow::io::ReadableFile::Open(file_path_, &file_reader_);
   if (!msg.ok()) {
-    std::cerr << "Open file failed, file name is " << filePath << ", error is : " << msg
+    std::cerr << "Open file failed, file name is " << file_path_ << ", error is : " << msg
               << std::endl;
     return msg;
   }
   return msg;
 }
 
-::arrow::Status FileConnector::openWritable(bool useHdfs3, int replication) {
+::arrow::Status FileConnector::OpenWritable(bool option, int replication) {
   ::arrow::Status msg;
-  if (!dirPath.empty()) {
-    msg = mkdir(dirPath);
+  if (!dir_path_.empty()) {
+    msg = Mkdir(dir_path_);
     if (!msg.ok()) {
-      std::cerr << "mkdir for path failed " << dirPath << ", error is : " << msg
+      std::cerr << "Mkdir for path failed " << dir_path_ << ", error is : " << msg
                 << std::endl;
       return msg;
     }
   }
 
-  msg = ::arrow::io::FileOutputStream::Open(filePath, false, &fileWriter);
+  msg = ::arrow::io::FileOutputStream::Open(file_path_, false, &file_writer_);
   if (!msg.ok()) {
-    std::cerr << "Open file failed, file name is " << filePath << ", error is : " << msg
+    std::cerr << "Open file failed, file name is " << file_path_ << ", error is : " << msg
               << std::endl;
     return msg;
   }
   return msg;
 }
 
-::arrow::Status FileConnector::mkdir(std::string path) {
+::arrow::Status FileConnector::Mkdir(std::string path) {
   std::string cmd = "mkdir -p ";
   cmd.append(path);
   const int ret = system(cmd.c_str());
