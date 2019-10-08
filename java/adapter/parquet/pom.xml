@@ -40,7 +40,7 @@
     </dependencies>
 
     <properties>
-        <arrow.cpp.build.dir>../../../cpp/build/release</arrow.cpp.build.dir>
+        <arrow.cpp.build.dir>../../../cpp/release-build</arrow.cpp.build.dir>
     </properties>
     <build>
         <resources>
@@ -48,8 +48,6 @@
                 <directory>${arrow.cpp.build.dir}</directory>
                 <includes>
                     <include>**/libarrow_parquet_jni.*</include>
-                    <include>**/libarrow.*</include>
-                    <include>**/libparquet.*</include>
                 </includes>
             </resource>
         </resources>
