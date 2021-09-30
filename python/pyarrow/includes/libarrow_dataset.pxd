@@ -56,6 +56,11 @@ cdef extern from "arrow/dataset/api.h" namespace "arrow::dataset" nogil:
         "arrow::dataset::Deserialize"(shared_ptr[CBuffer])
 
     cdef cppclass CScanOptions "arrow::dataset::ScanOptions":
+        CExpression filter
+        CExpression projection
+        shared_ptr[CSchema] dataset_schema
+        int64_t batch_size
+        c_bool use_threads
         @staticmethod
         shared_ptr[CScanOptions] Make(shared_ptr[CSchema] schema)
 
