@@ -921,6 +921,11 @@ cdef class Fragment(_Weakrefable):
     def _scanner(self, **kwargs):
         return Scanner.from_fragment(self, **kwargs)
 
+    def scan_(self, Schema schema=None, **kwargs):
+        cdef ScanOptions options=self._scanner(schema=schema, **kwargs).options()
+        for maybe_task in GetResultValue(self.fragment.Scan(options.unwrap())):
+            yield ScanTask.wrap(GetResultValue(move(maybe_task)))
+
     def scan(self, Schema schema=None, **kwargs):
         """Builds a scan operation against the dataset.
 
@@ -1128,6 +1133,32 @@ class RowGroupInfo:
             return False
         return self.id == other.id
 
+cdef class ScanOptions(_Weakrefable):
+    """Scan options specific to scan operation."""
+
+    cdef:
+        shared_ptr[CScanOptions] wrapped
+    
+    def __init__(self):
+        _forbid_instantiation(self.__class__)
+
+    cdef init(self, const shared_ptr[CScanOptions]& sp):
+        self.wrapped = sp
+
+    @staticmethod
+    cdef wrap(const shared_ptr[CScanOptions]& sp):
+        cdef ScanOptions self = ScanOptions.__new__(ScanOptions)
+        self.init(sp)
+        return self
+
+    cdef shared_ptr[CScanOptions] unwrap(self):
+        return self.wrapped
+
+    def __eq__(self, other):
+        try:
+            return self.equals(other)
+        except TypeError:
+            return False
 
 cdef class FragmentScanOptions(_Weakrefable):
     """Scan options specific to a particular fragment and scan operation."""
@@ -2917,6 +2948,8 @@ cdef class Scanner(_Weakrefable):
             result = self.scanner.Head(num_rows)
         return pyarrow_wrap_table(GetResultValue(result))
 
+    def options(self):
+        return ScanOptions.wrap(self.scanner.options())
 
 def _get_partition_keys(Expression partition_expression):
     """
