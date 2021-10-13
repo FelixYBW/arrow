@@ -2625,39 +2625,6 @@ cdef class ScanTask(_Weakrefable):
             iterator = move(GetResultValue(self.task.Execute()))
         return RecordBatchIterator.wrap(self, move(iterator))
 
-
-cdef class RecordBatchIterator(_Weakrefable):
-    """An iterator over a sequence of record batches."""
-    cdef:
-        # An object that must be kept alive with the iterator.
-        object iterator_owner
-        # Iterator is a non-POD type and Cython uses offsetof, leading
-        # to a compiler warning unless wrapped like so
-        shared_ptr[CRecordBatchIterator] iterator
-
-    def __init__(self):
-        _forbid_instantiation(self.__class__, subclasses_instead=False)
-
-    @staticmethod
-    cdef wrap(object owner, CRecordBatchIterator iterator):
-        cdef RecordBatchIterator self = \
-            RecordBatchIterator.__new__(RecordBatchIterator)
-        self.iterator_owner = owner
-        self.iterator = make_shared[CRecordBatchIterator](move(iterator))
-        return self
-
-    def __iter__(self):
-        return self
-
-    def __next__(self):
-        cdef shared_ptr[CRecordBatch] record_batch
-        with nogil:
-            record_batch = GetResultValue(move(self.iterator.get().Next()))
-        if record_batch == NULL:
-            raise StopIteration
-        return pyarrow_wrap_batch(record_batch)
-
-
 class TaggedRecordBatch(collections.namedtuple(
         "TaggedRecordBatch", ["record_batch", "fragment"])):
     """A combination of a record batch and the fragment it came from."""

@@ -27,15 +27,19 @@ from libcpp.vector cimport vector as c_vector
 from libcpp.unordered_set cimport unordered_set as c_unordered_set
 from libc.stdint cimport int64_t, int32_t, uint8_t, uintptr_t
 
+from cython.operator cimport dereference as deref
+
 from pyarrow.includes.libarrow cimport *
 from pyarrow.lib cimport (Array, DataType, Field, MemoryPool, RecordBatch,
                           Schema, check_status, pyarrow_wrap_array,
-                          pyarrow_wrap_data_type, ensure_type, _Weakrefable)
+                          pyarrow_wrap_data_type, ensure_type, _Weakrefable,
+                          RecordBatchIterator, pyarrow_unwrap_batch )
 from pyarrow.lib import frombytes
 
 from pyarrow.includes.libgandiva cimport (
     CCondition, CExpression,
     CNode, CProjector, CFilter,
+    CProjector_Filter_Exec,
     CSelectionVector,
     CSelectionVector_Mode,
     _ensure_selection_mode,
@@ -210,6 +214,34 @@ cdef class Filter(_Weakrefable):
         check_status(self.filter.get().Evaluate(
             batch.sp_batch.get()[0], selection))
         return SelectionVector.create(selection)
+
+cdef class Projector_Filter_Exec(_Weakrefable):
+    cdef:
+        shared_ptr[CProjector_Filter_Exec] projector_filter_exec
+        CProjector_Filter_Exec* p_pfe
+
+    def __init__(self, Projector proj, Filter filter, MemoryPool pool, str selection_mode="UINT32"):
+        cdef:
+            shared_ptr[CProjector_Filter_Exec] pfe = make_shared[CProjector_Filter_Exec](
+                    proj.projector, filter.filter, pool.pool, _ensure_selection_mode(selection_mode))
+        self.init(pfe)
+
+    cdef void init(self, const shared_ptr[CProjector_Filter_Exec]& pfe):
+        self.projector_filter_exec = pfe
+        self.p_pfe = pfe.get()
+
+    def evaluate(self, in_batch, RecordBatch out_batch):
+        cdef shared_ptr[CRecordBatch] rst;
+        check_status(self.p_pfe.Evaluate(pyarrow_unwrap_batch(in_batch), rst))
+        out_batch.init(rst)
+
+    def process(self, RecordBatchIterator in_iterator):
+        cdef:
+            CRecordBatchIterator iterator
+
+        with nogil:
+            iterator = move(self.p_pfe.Process(move(deref(in_iterator.unwrap()))))
+        return RecordBatchIterator.wrap(self, move(iterator))
 
 
 cdef class TreeExprBuilder(_Weakrefable):

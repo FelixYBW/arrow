@@ -261,6 +261,22 @@ Status Projector::Evaluate(const arrow::RecordBatch& batch,
   return Status::OK();
 }
 
+Status Projector::Evaluate(const arrow::RecordBatch& batch,
+    const SelectionVector* selection_vector,
+    arrow::MemoryPool* pool, std::shared_ptr<arrow::RecordBatch>& output)
+{
+  auto num_rows =
+      selection_vector == nullptr ? batch.num_rows() : selection_vector->GetNumSlots();
+
+  arrow::ArrayVector proj_out;
+  ARROW_RETURN_NOT_OK(this->Evaluate(batch, selection_vector, pool, &proj_out));
+
+  auto schema = arrow::schema(output_fields_);
+
+  output=std::move(arrow::RecordBatch::Make(schema, num_rows, proj_out));
+  return Status::OK();
+}
+
 // TODO : handle complex vectors (list/map/..)
 Status Projector::AllocArrayData(const DataTypePtr& type, int64_t num_records,
                                  arrow::MemoryPool* pool, ArrayDataPtr* array_data) {

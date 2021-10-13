@@ -25,12 +25,6 @@ from pyarrow.includes.libarrow_fs cimport *
 from pyarrow._parquet cimport *
 
 
-cdef extern from "arrow/api.h" namespace "arrow" nogil:
-
-    cdef cppclass CRecordBatchIterator "arrow::RecordBatchIterator"(
-            CIterator[shared_ptr[CRecordBatch]]):
-        pass
-
 
 cdef extern from "arrow/dataset/api.h" namespace "arrow::dataset" nogil:
 

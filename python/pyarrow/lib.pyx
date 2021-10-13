@@ -156,3 +156,37 @@ include "benchmark.pxi"
 
 # Public API
 include "public-api.pxi"
+
+
+
+cdef class RecordBatchIterator(_Weakrefable):
+    """An iterator over a sequence of record batches."""
+
+    def __init__(self):
+        raise TypeError("Do not call {}'s constructor directly, use "
+                        "make_filter instead"
+                        .format(self.__class__.__name__))
+
+    @staticmethod
+    cdef wrap(object owner, CRecordBatchIterator iterator):
+        cdef RecordBatchIterator self = \
+            RecordBatchIterator.__new__(RecordBatchIterator)
+        self.iterator_owner = owner
+        self.iterator = make_shared[CRecordBatchIterator](move(iterator))
+        return self
+
+    cdef inline shared_ptr[CRecordBatchIterator] unwrap(self) nogil:
+        return self.iterator
+
+    def __iter__(self):
+        return self
+
+    def __next__(self):
+        cdef shared_ptr[CRecordBatch] record_batch
+        with nogil:
+            record_batch = GetResultValue(move(self.iterator.get().Next()))
+        if record_batch == NULL:
+            raise StopIteration
+        return pyarrow_wrap_batch(record_batch)
+
+

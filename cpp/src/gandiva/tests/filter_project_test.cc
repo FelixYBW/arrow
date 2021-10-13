@@ -19,6 +19,7 @@
 #include "arrow/memory_pool.h"
 #include "gandiva/filter.h"
 #include "gandiva/projector.h"
+#include "gandiva/projector_filter_exec.h"
 #include "gandiva/selection_vector.h"
 #include "gandiva/tests/test_util.h"
 #include "gandiva/tree_expr_builder.h"
@@ -89,8 +90,15 @@ TEST_F(TestFilterProject, TestSimple16) {
   status = projector->Evaluate(*in_batch, selection_vector.get(), pool_, &outputs);
   EXPECT_TRUE(status.ok());
 
+  Projector_Filter_Exec exec_test(projector,filter,pool_);
+
+  std::shared_ptr<arrow::RecordBatch> out_batch;
+  status = exec_test.Evaluate(in_batch, out_batch);
+
+  EXPECT_TRUE(status.ok());
+
   // Validate results
-  EXPECT_ARROW_ARRAY_EQUALS(result, outputs.at(0));
+  EXPECT_ARROW_ARRAY_EQUALS(result, out_batch->column(0));
 }
 
 TEST_F(TestFilterProject, TestSimple32) {

@@ -249,6 +249,22 @@ cdef extern from "gandiva/filter.h" namespace "gandiva" nogil:
             shared_ptr[CSchema] schema, shared_ptr[CCondition] condition,
             shared_ptr[CFilter]* filter)
 
+cdef extern from "gandiva/projector_filter_exec.h" namespace "gandiva" nogil:
+
+    cdef cppclass CProjector_Filter_Exec" gandiva::Projector_Filter_Exec":
+
+        CProjector_Filter_Exec(shared_ptr[CProjector] proj,
+                shared_ptr[CFilter] filter,
+                CMemoryPool* pool,
+                CSelectionVector_Mode model)
+
+        CStatus Evaluate(
+            const shared_ptr[CRecordBatch]& in_batch,
+            const shared_ptr[CRecordBatch]& out_batch)
+        
+        CRecordBatchIterator Process(CRecordBatchIterator in_iter)
+
+
 cdef extern from "gandiva/function_signature.h" namespace "gandiva" nogil:
 
     cdef cppclass CFunctionSignature" gandiva::FunctionSignature":

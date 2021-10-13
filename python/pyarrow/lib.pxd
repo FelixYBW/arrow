@@ -433,6 +433,19 @@ cdef class RecordBatch(_PandasConvertible):
     cdef void init(self, const shared_ptr[CRecordBatch]& table)
 
 
+cdef class RecordBatchIterator(_Weakrefable):
+    """An iterator over a sequence of record batches."""
+    cdef:
+        # An object that must be kept alive with the iterator.
+        object iterator_owner
+        # Iterator is a non-POD type and Cython uses offsetof, leading
+        # to a compiler warning unless wrapped like so
+        shared_ptr[CRecordBatchIterator] iterator
+
+    @staticmethod
+    cdef wrap(object owner, CRecordBatchIterator iterator)
+    cdef inline shared_ptr[CRecordBatchIterator] unwrap(self) nogil
+
 cdef class Buffer(_Weakrefable):
     cdef:
         shared_ptr[CBuffer] buffer

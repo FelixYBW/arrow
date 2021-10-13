@@ -601,8 +601,7 @@ cdef class RecordBatch(_PandasConvertible):
         self._schema = None
 
     def __init__(self):
-        raise TypeError("Do not call RecordBatch's constructor directly, use "
-                        "one of the `RecordBatch.from_*` functions instead.")
+        pass
 
     cdef void init(self, const shared_ptr[CRecordBatch]& batch):
         self.sp_batch = batch

@@ -117,6 +117,18 @@ class GANDIVA_EXPORT Projector {
   Status Evaluate(const arrow::RecordBatch& batch,
                   const SelectionVector* selection_vector, const ArrayDataVector& output);
 
+  /// Evaluate the specified record batch, and return the allocated and populated output
+  /// recordBatch. The output arrays in RecordBatch will be allocated from the memory pool 'pool', and added
+  /// to the recordBatch.
+  ///
+  /// \param[in] batch the record batch. schema should be the same as the one in 'Make'
+  /// \param[in] selection_vector selection vector which has filtered row positions.
+  /// \param[in] pool memory pool used to allocate output arrays (if required).
+  /// \param[out] output the shared_ptr of recordBatch of allocated/populated arrays.
+  Status Evaluate(const arrow::RecordBatch& batch,
+                  const SelectionVector* selection_vector, arrow::MemoryPool* pool,
+                  std::shared_ptr<arrow::RecordBatch>& output);
+
   std::string DumpIR();
 
  private:
