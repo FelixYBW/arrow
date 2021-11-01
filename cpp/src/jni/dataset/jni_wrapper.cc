@@ -16,6 +16,7 @@
 // under the License.
 
 #include <mutex>
+#include <chrono>
 
 #include "arrow/array.h"
 #include "arrow/dataset/api.h"
@@ -135,7 +136,14 @@ class DisposableScannerAdaptor {
   }
 
   arrow::Result<std::shared_ptr<arrow::RecordBatch>> Next() {
+    
+    auto start = std::chrono::high_resolution_clock::now();
+
     ARROW_ASSIGN_OR_RAISE(std::shared_ptr<arrow::RecordBatch> batch, NextBatch());
+
+    auto finish = std::chrono::high_resolution_clock::now();
+
+    std::cout << "xgbtck parquetscan next " << finish.time_since_epoch().count() << " dur " << std::chrono::duration_cast<std::chrono::nanoseconds>(finish-start).count() << std::endl;
     return batch;
   }
 
