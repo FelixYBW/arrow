@@ -23,11 +23,6 @@
 #include <unordered_set>
 #include <utility>
 #include <vector>
-#include <chrono>
-#include <iostream>
-
-#include <execinfo.h>
-
 
 #include "arrow/dataset/dataset_internal.h"
 #include "arrow/dataset/scanner.h"
@@ -55,20 +50,6 @@ namespace dataset {
 using parquet::arrow::SchemaField;
 using parquet::arrow::SchemaManifest;
 using parquet::arrow::StatisticsAsScalars;
-
-
-void print_trace(void) {
-    char **strings;
-    size_t i, size;
-    enum Constexpr { MAX_SIZE = 1024 };
-    void *array[MAX_SIZE];
-    size = backtrace(array, MAX_SIZE);
-    strings = backtrace_symbols(array, size);
-    for (i = 0; i < size; i++)
-        printf("%s\n", strings[i]);
-    puts("");
-    free(strings);
-}
 
 
 /// \brief A ScanTask backed by a parquet file and a RowGroup within a parquet file.
