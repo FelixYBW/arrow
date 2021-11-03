@@ -15,23 +15,25 @@
  * limitations under the License.
  */
 
-package org.apache.arrow.dataset.file;
+package org.apache.arrow.memory;
+
+import static org.junit.Assert.assertEquals;
+
+import org.junit.Test;
 
 /**
- * File format definitions.
+ * Test cases for {@link MemoryChunk}.
  */
-public enum FileFormat {
-  PARQUET(0),
-  CSV(1),
-  NONE(-1);
+public class TestMemoryChunkNetty {
 
-  private final int id;
+  @Test
+  public void testMemoryChunkType() {
+    // test netty memory chunk type
+    System.setProperty(
+        DefaultMemoryChunkAllocatorOption.ALLOCATION_MANAGER_TYPE_PROPERTY_NAME, "Netty");
+    DefaultMemoryChunkAllocatorOption.MemoryChunkAllocatorType chunkType =
+        DefaultMemoryChunkAllocatorOption.getDefaultMemoryChunkAllocatorType();
 
-  FileFormat(int id) {
-    this.id = id;
-  }
-
-  public int id() {
-    return id;
+    assertEquals(DefaultMemoryChunkAllocatorOption.MemoryChunkAllocatorType.Netty, chunkType);
   }
 }

@@ -50,7 +50,7 @@ import org.apache.arrow.util.Preconditions;
  * The management (allocation, deallocation, reference counting etc) for
  * the memory chunk is not done by ArrowBuf.
  * Default implementation of ReferenceManager, allocation is in
- * {@link BaseAllocator}, {@link BufferLedger} and {@link AllocationManager}
+ * {@link BaseAllocator}, {@link BufferLedger} and {@link MemoryChunkManager}
  * </p>
  */
 public final class ArrowBuf implements AutoCloseable {
@@ -102,6 +102,15 @@ public final class ArrowBuf implements AutoCloseable {
   }
 
   /**
+   * Whether this ArrowBuf is open for read or write.
+   *
+   * @return true if currently accessible, false if not
+   */
+  public boolean isOpen() {
+    return referenceManager.isOpen();
+  }
+
+  /**
    * Allows a function to determine whether not reading a particular string of bytes is valid.
    *
    * <p>Will throw an exception if the memory is not readable for some reason. Only doesn't
@@ -121,8 +130,8 @@ public final class ArrowBuf implements AutoCloseable {
    * For get/set operations, reference count should be >= 1.
    */
   private void ensureAccessible() {
-    if (this.refCnt() == 0) {
-      throw new IllegalStateException("Ref count should be >= 1 for accessing the ArrowBuf");
+    if (!isOpen()) {
+      throw new IllegalStateException("ArrowBuf should be open for accessing the ArrowBuf");
     }
   }
 
@@ -264,7 +273,7 @@ public final class ArrowBuf implements AutoCloseable {
    *
    * If the starting virtual address of chunk is MAR, then memory
    * address of this ArrowBuf is MAR + offset -- this is what is stored
-   * in variable addr. See the BufferLedger and AllocationManager code
+   * in variable addr. See the BufferLedger and MemoryChunkManager code
    * for the implementation of ReferenceManager that manages a
    * chunk of memory and creates ArrowBuf with access to a range of
    * bytes within the chunk (or the entire chunk)

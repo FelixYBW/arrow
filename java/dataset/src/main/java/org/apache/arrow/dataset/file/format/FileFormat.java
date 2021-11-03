@@ -15,25 +15,10 @@
  * limitations under the License.
  */
 
-package org.apache.arrow.memory;
+package org.apache.arrow.dataset.file.format;
 
-import static org.junit.Assert.assertEquals;
+import java.io.Closeable;
 
-import org.junit.Test;
-
-/**
- * Test cases for {@link AllocationManager}.
- */
-public class TestAllocationManager {
-
-  @Test
-  public void testAllocationManagerType() {
-
-    // test unknown allocation manager type
-    System.clearProperty(DefaultAllocationManagerOption.ALLOCATION_MANAGER_TYPE_PROPERTY_NAME);
-    DefaultAllocationManagerOption.AllocationManagerType mgrType =
-        DefaultAllocationManagerOption.getDefaultAllocationManagerType();
-
-    assertEquals(DefaultAllocationManagerOption.AllocationManagerType.Unknown, mgrType);
-  }
+public interface FileFormat extends Closeable {
+  long id();
 }

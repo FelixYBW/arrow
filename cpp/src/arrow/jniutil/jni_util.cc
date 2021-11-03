@@ -111,12 +111,15 @@ class ReservationListenableMemoryPool::Impl {
     }
     int64_t bytes_granted = (new_block_count - blocks_reserved_) * block_size_;
     blocks_reserved_ = new_block_count;
+    if (bytes_reserved_ > max_bytes_reserved_) {
+      max_bytes_reserved_ = bytes_reserved_;
+    }
     return bytes_granted;
   }
 
-  int64_t bytes_allocated() { return pool_->bytes_allocated(); }
+  int64_t bytes_allocated() const { return bytes_reserved_; }
 
-  int64_t max_memory() { return pool_->max_memory(); }
+  int64_t max_memory() const { return max_bytes_reserved_; }
 
   std::string backend_name() { return pool_->backend_name(); }
 
@@ -128,6 +131,7 @@ class ReservationListenableMemoryPool::Impl {
   int64_t block_size_;
   int64_t blocks_reserved_;
   int64_t bytes_reserved_;
+  int64_t max_bytes_reserved_ = 0L;
   std::mutex mutex_;
 };
 
@@ -275,7 +279,7 @@ Status SetMetadataForSingleField(std::shared_ptr<ArrayData> array_data,
                                  std::vector<ipc::internal::FieldMetadata>& nodes_meta,
                                  std::vector<ipc::internal::BufferMetadata>& buffers_meta,
                                  std::shared_ptr<KeyValueMetadata>& custom_metadata) {
-  nodes_meta.push_back({array_data->length, array_data->null_count, 0L});
+  nodes_meta.push_back({array_data->length, array_data->GetNullCount(), 0L});
 
   for (size_t i = 0; i < array_data->buffers.size(); i++) {
     auto buffer = array_data->buffers.at(i);

@@ -26,7 +26,7 @@ import org.apache.arrow.memory.util.HistoricalLog;
 import org.apache.arrow.util.Preconditions;
 
 /**
- * The reference manager that binds an {@link AllocationManager} to
+ * The reference manager that binds an {@link MemoryChunkManager} to
  * {@link BufferAllocator} and a set of {@link ArrowBuf}. The set of
  * ArrowBufs managed by this reference manager share a common
  * fate (same reference count).
@@ -42,19 +42,19 @@ public class BufferLedger implements ValueWithKeyIncluded<BufferAllocator>, Refe
   // correctly
   private final long lCreationTime = System.nanoTime();
   private final BufferAllocator allocator;
-  private final AllocationManager allocationManager;
+  private final MemoryChunkManager memoryChunkManager;
   private final HistoricalLog historicalLog =
       BaseAllocator.DEBUG ? new HistoricalLog(BaseAllocator.DEBUG_LOG_LENGTH,
         "BufferLedger[%d]", 1) : null;
   private volatile long lDestructionTime = 0;
 
-  BufferLedger(final BufferAllocator allocator, final AllocationManager allocationManager) {
+  BufferLedger(final BufferAllocator allocator, final MemoryChunkManager memoryChunkManager) {
     this.allocator = allocator;
-    this.allocationManager = allocationManager;
+    this.memoryChunkManager = memoryChunkManager;
   }
 
   boolean isOwningLedger() {
-    return this == allocationManager.getOwningLedger();
+    return this == memoryChunkManager.getOwningLedger();
   }
 
   public BufferAllocator getKey() {
@@ -92,9 +92,9 @@ public class BufferLedger implements ValueWithKeyIncluded<BufferAllocator>, Refe
    * Decrement the ledger's reference count by 1 for the associated underlying
    * memory chunk. If the reference count drops to 0, it implies that
    * no ArrowBufs managed by this reference manager need access to the memory
-   * chunk. In that case, the ledger should inform the allocation manager
+   * chunk. In that case, the ledger should inform the MemoryChunkManager
    * about releasing its ownership for the chunk. Whether or not the memory
-   * chunk will be released is something that {@link AllocationManager} will
+   * chunk will be released is something that {@link MemoryChunkManager} will
    * decide since tracks the usage of memory chunk across multiple reference
    * managers and allocators.
    * @return true if the new ref count has dropped to 0, false otherwise
@@ -108,9 +108,9 @@ public class BufferLedger implements ValueWithKeyIncluded<BufferAllocator>, Refe
    * Decrement the ledger's reference count for the associated underlying
    * memory chunk. If the reference count drops to 0, it implies that
    * no ArrowBufs managed by this reference manager need access to the memory
-   * chunk. In that case, the ledger should inform the allocation manager
+   * chunk. In that case, the ledger should inform the MemoryChunkManager
    * about releasing its ownership for the chunk. Whether or not the memory
-   * chunk will be released is something that {@link AllocationManager} will
+   * chunk will be released is something that {@link MemoryChunkManager} will
    * decide since tracks the usage of memory chunk across multiple reference
    * managers and allocators.
    * @param decrement amount to decrease the reference count by
@@ -135,9 +135,9 @@ public class BufferLedger implements ValueWithKeyIncluded<BufferAllocator>, Refe
    * Decrement the ledger's reference count for the associated underlying
    * memory chunk. If the reference count drops to 0, it implies that
    * no ArrowBufs managed by this reference manager need access to the memory
-   * chunk. In that case, the ledger should inform the allocation manager
+   * chunk. In that case, the ledger should inform the MemoryChunkManager
    * about releasing its ownership for the chunk. Whether or not the memory
-   * chunk will be released is something that {@link AllocationManager} will
+   * chunk will be released is something that {@link MemoryChunkManager} will
    * decide since tracks the usage of memory chunk across multiple reference
    * managers and allocators.
    *
@@ -147,14 +147,14 @@ public class BufferLedger implements ValueWithKeyIncluded<BufferAllocator>, Refe
   private int decrement(int decrement) {
     allocator.assertOpen();
     final int outcome;
-    synchronized (allocationManager) {
+    synchronized (memoryChunkManager) {
       outcome = bufRefCnt.addAndGet(-decrement);
       if (outcome == 0) {
         lDestructionTime = System.nanoTime();
         // refcount of this reference manager has dropped to 0
-        // inform the allocation manager that this reference manager
+        // inform the MemoryChunkManager that this reference manager
         // no longer holds references to underlying memory
-        allocationManager.release(this);
+        memoryChunkManager.release(this);
       }
     }
     return outcome;
@@ -183,6 +183,11 @@ public class BufferLedger implements ValueWithKeyIncluded<BufferAllocator>, Refe
     }
     final int originalReferenceCount = bufRefCnt.getAndAdd(increment);
     Preconditions.checkArgument(originalReferenceCount > 0);
+  }
+
+  @Override
+  public boolean isOpen() {
+    return getRefCount() > 0 && !memoryChunkManager.isChunkDestroyed();
   }
 
   /**
@@ -252,7 +257,7 @@ public class BufferLedger implements ValueWithKeyIncluded<BufferAllocator>, Refe
   /**
    * Used by an allocator to create a new ArrowBuf. This is provided
    * as a helper method for the allocator when it allocates a new memory chunk
-   * using a new instance of allocation manager and creates a new reference manager
+   * using a new instance of MemoryChunkManager and creates a new reference manager
    * too.
    *
    * @param length  The length in bytes that this ArrowBuf will provide access to.
@@ -265,7 +270,7 @@ public class BufferLedger implements ValueWithKeyIncluded<BufferAllocator>, Refe
     allocator.assertOpen();
 
     // the start virtual address of the ArrowBuf will be same as address of memory chunk
-    final long startAddress = allocationManager.memoryAddress();
+    final long startAddress = memoryChunkManager.memoryAddress();
 
     // create ArrowBuf
     final ArrowBuf buf = new ArrowBuf(this, manager, length, startAddress);
@@ -293,7 +298,7 @@ public class BufferLedger implements ValueWithKeyIncluded<BufferAllocator>, Refe
    * <p>
    * This operation has no impact on the reference count of this ArrowBuf. The newly created
    * ArrowBuf with either have a reference count of 1 (in the case that this is the first time this
-   * memory is being associated with the target allocator or in other words allocation manager currently
+   * memory is being associated with the target allocator or in other words MemoryChunkManager currently
    * doesn't hold a mapping for the target allocator) or the current value of the reference count for
    * the target allocator-reference manager combination + 1 in the case that the provided allocator
    * already had an association to this underlying memory.
@@ -311,13 +316,13 @@ public class BufferLedger implements ValueWithKeyIncluded<BufferAllocator>, Refe
     }
 
     // the call to associate will return the corresponding reference manager (buffer ledger) for
-    // the target allocator. if the allocation manager didn't already have a mapping
+    // the target allocator. if the MemoryChunkManager didn't already have a mapping
     // for the target allocator, it will create one and return the new reference manager with a
     // reference count of 1. Thus the newly created buffer in this case will have a ref count of 1.
     // alternatively, if there was already a mapping for <buffer allocator, ref manager> in
-    // allocation manager, the ref count of the new buffer will be targetrefmanager.refcount() + 1
+    // MemoryChunkManager, the ref count of the new buffer will be targetrefmanager.refcount() + 1
     // and this will be true for all the existing buffers currently managed by targetrefmanager
-    final BufferLedger targetRefManager = allocationManager.associate(target);
+    final BufferLedger targetRefManager = memoryChunkManager.associate(target);
     // create a new ArrowBuf to associate with new allocator and target ref manager
     final long targetBufLength = srcBuffer.capacity();
     ArrowBuf targetArrowBuf = targetRefManager.deriveBuffer(srcBuffer, 0, targetBufLength);
@@ -348,11 +353,11 @@ public class BufferLedger implements ValueWithKeyIncluded<BufferAllocator>, Refe
       return true;
     }
 
-    // since two balance transfers out from the allocation manager could cause incorrect
+    // since two balance transfers out from the MemoryChunkManager could cause incorrect
     // accounting, we need to ensure
-    // that this won't happen by synchronizing on the allocation manager instance.
-    synchronized (allocationManager) {
-      if (allocationManager.getOwningLedger() != this) {
+    // that this won't happen by synchronizing on the MemoryChunkManager instance.
+    synchronized (memoryChunkManager) {
+      if (memoryChunkManager.getOwningLedger() != this) {
         // since the calling reference manager is not the owning
         // reference manager for the underlying memory, transfer is
         // a NO-OP
@@ -364,12 +369,12 @@ public class BufferLedger implements ValueWithKeyIncluded<BufferAllocator>, Refe
             targetReferenceManager.getAllocator().getName());
       }
 
-      boolean overlimit = targetAllocator.forceAllocate(allocationManager.getSize());
-      allocator.releaseBytes(allocationManager.getSize());
+      boolean overlimit = targetAllocator.forceAllocate(memoryChunkManager.getSize());
+      allocator.releaseBytes(memoryChunkManager.getSize());
       // since the transfer can only happen from the owning reference manager,
       // we need to set the target ref manager as the new owning ref manager
-      // for the chunk of memory in allocation manager
-      allocationManager.setOwningLedger((BufferLedger) targetReferenceManager);
+      // for the chunk of memory in MemoryChunkManager
+      memoryChunkManager.setOwningLedger((BufferLedger) targetReferenceManager);
       return overlimit;
     }
   }
@@ -385,7 +390,7 @@ public class BufferLedger implements ValueWithKeyIncluded<BufferAllocator>, Refe
    * This operation has no impact on the reference count of this ArrowBuf. The newly created
    * ArrowBuf with either have a reference count of 1 (in the case that this is the first time
    * this memory is being associated with the new allocator) or the current value of the reference
-   * count for the other AllocationManager/BufferLedger combination + 1 in the case that the provided
+   * count for the other MemoryChunkManager/BufferLedger combination + 1 in the case that the provided
    * allocator already had an association to this underlying memory.
    * </p>
    * <p>
@@ -405,13 +410,13 @@ public class BufferLedger implements ValueWithKeyIncluded<BufferAllocator>, Refe
   @Override
   public TransferResult transferOwnership(final ArrowBuf srcBuffer, final BufferAllocator target) {
     // the call to associate will return the corresponding reference manager (buffer ledger) for
-    // the target allocator. if the allocation manager didn't already have a mapping
+    // the target allocator. if the MemoryChunkManager didn't already have a mapping
     // for the target allocator, it will create one and return the new reference manager with a
     // reference count of 1. Thus the newly created buffer in this case will have a ref count of 1.
     // alternatively, if there was already a mapping for <buffer allocator, ref manager> in
-    // allocation manager, the ref count of the new buffer will be targetrefmanager.refcount() + 1
+    // MemoryChunkManager, the ref count of the new buffer will be targetrefmanager.refcount() + 1
     // and this will be true for all the existing buffers currently managed by targetrefmanager
-    final BufferLedger targetRefManager = allocationManager.associate(target);
+    final BufferLedger targetRefManager = memoryChunkManager.associate(target);
     // create a new ArrowBuf to associate with new allocator and target ref manager
     final long targetBufLength = srcBuffer.capacity();
     final ArrowBuf targetArrowBuf = targetRefManager.deriveBuffer(srcBuffer, 0, targetBufLength);
@@ -454,7 +459,7 @@ public class BufferLedger implements ValueWithKeyIncluded<BufferAllocator>, Refe
    */
   @Override
   public long getSize() {
-    return allocationManager.getSize();
+    return memoryChunkManager.getSize();
   }
 
   /**
@@ -465,9 +470,9 @@ public class BufferLedger implements ValueWithKeyIncluded<BufferAllocator>, Refe
    */
   @Override
   public long getAccountedSize() {
-    synchronized (allocationManager) {
-      if (allocationManager.getOwningLedger() == this) {
-        return allocationManager.getSize();
+    synchronized (memoryChunkManager) {
+      if (memoryChunkManager.getOwningLedger() == this) {
+        return memoryChunkManager.getSize();
       } else {
         return 0;
       }
@@ -514,12 +519,12 @@ public class BufferLedger implements ValueWithKeyIncluded<BufferAllocator>, Refe
   }
 
   /**
-   * Get the {@link AllocationManager} used by this BufferLedger.
+   * Get the {@link MemoryChunkManager} used by this BufferLedger.
    *
-   * @return The AllocationManager used by this BufferLedger.
+   * @return The MemoryChunkManager used by this BufferLedger.
    */
-  public AllocationManager getAllocationManager() {
-    return allocationManager;
+  public MemoryChunkManager getMemoryChunkManager() {
+    return memoryChunkManager;
   }
 
 }

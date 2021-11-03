@@ -17,22 +17,23 @@
 
 package org.apache.arrow.memory;
 
+import static org.junit.Assert.assertEquals;
+
+import org.junit.Test;
+
 /**
- * The default Allocation Manager Factory for a module.
- *
+ * Test cases for {@link MemoryChunk}.
  */
-public class DefaultAllocationManagerFactory implements AllocationManager.Factory {
+public class TestMemoryChunk {
 
-  public static final AllocationManager.Factory FACTORY = NettyAllocationManager.FACTORY;
+  @Test
+  public void testMemoryChunkType() {
 
-  @Override
-  public AllocationManager create(BufferAllocator accountingAllocator, long size) {
-    return FACTORY.create(accountingAllocator, size);
+    // test unknown memory chunk type
+    System.clearProperty(DefaultMemoryChunkAllocatorOption.ALLOCATION_MANAGER_TYPE_PROPERTY_NAME);
+    DefaultMemoryChunkAllocatorOption.MemoryChunkAllocatorType chunkType =
+        DefaultMemoryChunkAllocatorOption.getDefaultMemoryChunkAllocatorType();
+
+    assertEquals(DefaultMemoryChunkAllocatorOption.MemoryChunkAllocatorType.Unknown, chunkType);
   }
-
-  @Override
-  public ArrowBuf empty() {
-    return FACTORY.empty();
-  }
-
 }

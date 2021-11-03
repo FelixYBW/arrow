@@ -60,12 +60,19 @@ public interface ReferenceManager {
   void retain(int increment);
 
   /**
+   * Whether this reference manager ensures that the ArrowBuf's memory address is now available for reading.
+   *
+   * @return true if the ArrowBuf's memory memory address is available for reading, false if invalid
+   */
+  boolean isOpen();
+
+  /**
    * Create a new ArrowBuf that is associated with an alternative allocator for the purposes of
    * memory ownership and accounting. This has no impact on the reference counting for the current
    * ArrowBuf except in the situation where the passed in Allocator is the same as the current buffer.
    * This operation has no impact on the reference count of this ArrowBuf. The newly created
    * ArrowBuf with either have a reference count of 1 (in the case that this is the first time this
-   * memory is being associated with the target allocator or in other words allocation manager currently
+   * memory is being associated with the target allocator or in other words MemoryChunkManager currently
    * doesn't hold a mapping for the target allocator) or the current value of the reference count for
    * the target allocator-reference manager combination + 1 in the case that the provided allocator
    * already had an association to this underlying memory.
@@ -140,6 +147,11 @@ public interface ReferenceManager {
 
     @Override
     public void retain(int increment) { }
+
+    @Override
+    public boolean isOpen() {
+      return true;
+    }
 
     @Override
     public ArrowBuf retain(ArrowBuf srcBuffer, BufferAllocator targetAllocator) {

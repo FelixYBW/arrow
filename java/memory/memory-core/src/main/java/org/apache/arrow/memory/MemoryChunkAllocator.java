@@ -18,20 +18,24 @@
 package org.apache.arrow.memory;
 
 /**
- * The default Allocation Manager Factory for a module.
- *
+ * Factory interface of {@link MemoryChunk}.
  */
-public class DefaultAllocationManagerFactory implements AllocationManager.Factory {
+public interface MemoryChunkAllocator {
 
-  public static final AllocationManager.Factory FACTORY = UnsafeAllocationManager.FACTORY;
+  /**
+   * Allocate for new {@link MemoryChunk}.
+   *
+   * @param requestedSize the requested size of memory chunk. This could be different from the actual size of the
+   *                      allocated chunk which can be accessed within {@link MemoryChunk#size()}.
+   * @return the newly created {@link MemoryChunk}
+   */
+  MemoryChunk allocate(long requestedSize);
 
-  @Override
-  public AllocationManager create(BufferAllocator accountingAllocator, long size) {
-    return FACTORY.create(accountingAllocator, size);
-  }
-
-  @Override
-  public ArrowBuf empty() {
-    return UnsafeAllocationManager.FACTORY.empty();
-  }
+  /**
+   * Return the empty {@link ArrowBuf} instance which internally holds a {@link MemoryChunk} within this allocator
+   * type.
+   *
+   * @return the empty {@link ArrowBuf} instance.
+   */
+  ArrowBuf empty();
 }

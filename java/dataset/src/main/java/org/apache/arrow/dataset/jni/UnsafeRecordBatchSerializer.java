@@ -37,8 +37,6 @@ import org.apache.arrow.flatbuf.MessageHeader;
 import org.apache.arrow.flatbuf.RecordBatch;
 import org.apache.arrow.memory.ArrowBuf;
 import org.apache.arrow.memory.BufferAllocator;
-import org.apache.arrow.memory.BufferLedger;
-import org.apache.arrow.memory.NativeUnderlyingMemory;
 import org.apache.arrow.memory.util.LargeMemoryUtil;
 import org.apache.arrow.util.Preconditions;
 import org.apache.arrow.vector.compression.NoCompressionCodec;
@@ -129,10 +127,9 @@ public class UnsafeRecordBatchSerializer {
       final byte[] refDecoded = Base64.getDecoder().decode(keyValue.value());
       final long nativeBufferRef = ByteBuffer.wrap(refDecoded).order(ByteOrder.LITTLE_ENDIAN).getLong();
       final int size = LargeMemoryUtil.checkedCastToInt(bufferMeta.length());
-      final NativeUnderlyingMemory am = NativeUnderlyingMemory.create(allocator,
-          size, nativeBufferRef, bufferMeta.offset());
-      BufferLedger ledger = am.associate(allocator);
-      ArrowBuf buf = new ArrowBuf(ledger, null, size, bufferMeta.offset());
+      final NativeUnderlyingMemory chunk = new NativeUnderlyingMemory(size, nativeBufferRef,
+          bufferMeta.offset());
+      ArrowBuf buf = allocator.buffer(chunk);
       buffers.add(buf);
     }
 
