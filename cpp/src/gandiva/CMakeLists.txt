@@ -83,9 +83,11 @@ set(SRC_FILES
     llvm_generator.cc
     llvm_types.cc
     like_holder.cc
+    json_holder.cc
     literal_holder.cc
     projector.cc
     regex_util.cc
+    replace_holder.cc
     selection_vector.cc
     tree_expr_builder.cc
     to_date_holder.cc
@@ -228,7 +230,9 @@ add_gandiva_test(internals-test
                  lru_cache_test.cc
                  to_date_holder_test.cc
                  simple_arena_test.cc
+                 json_holder_test.cc
                  like_holder_test.cc
+                 replace_holder_test.cc
                  decimal_type_util_test.cc
                  random_generator_holder_test.cc
                  hash_utils_test.cc

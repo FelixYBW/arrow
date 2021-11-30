@@ -15,16 +15,31 @@
 // specific language governing permissions and limitations
 // under the License.
 
-// This API is EXPERIMENTAL.
+#include "gandiva/json_holder.h"
 
-#pragma once
+#include <gtest/gtest.h>
 
-#include "arrow/dataset/dataset.h"
-#include "arrow/dataset/discovery.h"
-#include "arrow/dataset/expression.h"
-#include "arrow/dataset/file_base.h"
-#include "arrow/dataset/file_csv.h"
-#include "arrow/dataset/file_ipc.h"
-#include "arrow/dataset/file_orc.h"
-#include "arrow/dataset/file_parquet.h"
-#include "arrow/dataset/scanner.h"
+#include <memory>
+#include <vector>
+
+#include "gandiva/regex_util.h"
+
+namespace gandiva {
+
+class TestJsonHolder : public ::testing::Test {};
+
+TEST_F(TestJsonHolder, TestJson) {
+  std::shared_ptr<JsonHolder> json_holder;
+
+  auto status = JsonHolder::Make(&json_holder);
+  EXPECT_EQ(status.ok(), true) << status.message();
+
+  auto& get_json_object = *json_holder;
+
+  int32_t out_len;
+  const uint8_t* data = get_json_object(R"({"hello": 3.5 })", "$.hello", &out_len);
+  EXPECT_EQ(std::string((char*)data, out_len), "3.5");
+
+}
+
+}  // namespace gandiva

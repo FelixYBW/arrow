@@ -27,19 +27,52 @@
 #include "gandiva/formatting_utils.h"
 #include "gandiva/hash_utils.h"
 #include "gandiva/in_holder.h"
+#include "gandiva/json_holder.h"
 #include "gandiva/like_holder.h"
 #include "gandiva/precompiled/types.h"
 #include "gandiva/random_generator_holder.h"
+#include "gandiva/replace_holder.h"
 #include "gandiva/to_date_holder.h"
 
 /// Stub functions that can be accessed from LLVM or the pre-compiled library.
 
 extern "C" {
 
+const uint8_t* gdv_fn_get_json_object_utf8_utf8(int64_t ptr, const char* data, int data_len,
+                           const char* pattern, int pattern_len, int32_t* out_len) {
+  gandiva::JsonHolder* holder = reinterpret_cast<gandiva::JsonHolder*>(ptr);
+  return (*holder)(std::string(data, data_len), std::string(pattern, pattern_len), out_len);
+}
+
 bool gdv_fn_like_utf8_utf8(int64_t ptr, const char* data, int data_len,
                            const char* pattern, int pattern_len) {
   gandiva::LikeHolder* holder = reinterpret_cast<gandiva::LikeHolder*>(ptr);
   return (*holder)(std::string(data, data_len));
+}
+
+bool gdv_fn_like_utf8_utf8_utf8(int64_t ptr, const char* data, int data_len,
+                                const char* pattern, int pattern_len,
+                                const char* escape_char, int escape_char_len) {
+  gandiva::LikeHolder* holder = reinterpret_cast<gandiva::LikeHolder*>(ptr);
+  return (*holder)(std::string(data, data_len));
+}
+
+bool gdv_fn_ilike_utf8_utf8(int64_t ptr, const char* data, int data_len,
+                            const char* pattern, int pattern_len) {
+  gandiva::LikeHolder* holder = reinterpret_cast<gandiva::LikeHolder*>(ptr);
+  return (*holder)(std::string(data, data_len));
+}
+
+const char* gdv_fn_regexp_replace_utf8_utf8(
+    int64_t ptr, int64_t holder_ptr, const char* data, int32_t data_len,
+    const char* /*pattern*/, int32_t /*pattern_len*/, const char* replace_string,
+    int32_t replace_string_len, int32_t* out_length) {
+  gandiva::ExecutionContext* context = reinterpret_cast<gandiva::ExecutionContext*>(ptr);
+
+  gandiva::ReplaceHolder* holder = reinterpret_cast<gandiva::ReplaceHolder*>(holder_ptr);
+
+  return (*holder)(context, data, data_len, replace_string, replace_string_len,
+                   out_length);
 }
 
 double gdv_fn_random(int64_t ptr) {
@@ -308,6 +341,40 @@ CAST_NUMERIC_FROM_STRING(double, arrow::DoubleType, FLOAT8)
 
 #undef CAST_NUMERIC_FROM_STRING
 
+#define CAST_NUMERIC_OR_NULL_FROM_STRING(OUT_TYPE, ARROW_TYPE, TYPE_NAME)            \
+  GANDIVA_EXPORT                                                                     \
+  OUT_TYPE gdv_fn_cast##TYPE_NAME##_or_null_utf8(int64_t context, const char* data,  \
+                                    int32_t len, bool in_valid, bool* out_valid) {   \
+    OUT_TYPE val = 0;                                                                \
+    *out_valid = true;                                                               \
+    if (!in_valid) {                                                                 \
+      *out_valid = false;                                                            \
+      return val;                                                                    \
+    }                                                                                \
+    /* trim leading and trailing spaces */                                           \
+    int32_t trimmed_len;                                                             \
+    int32_t start = 0, end = len - 1;                                                \
+    while (start <= end && data[start] == ' ') {                                     \
+      ++start;                                                                       \
+    }                                                                                \
+    while (end >= start && data[end] == ' ') {                                       \
+      --end;                                                                         \
+    }                                                                                \
+    trimmed_len = end - start + 1;                                                   \
+    const char* trimmed_data = data + start;                                         \
+    if (!arrow::internal::ParseValue<ARROW_TYPE>(trimmed_data, trimmed_len, &val)) { \
+      *out_valid = false;                                                            \
+    }                                                                                \
+    return val;                                                                      \
+  }
+
+CAST_NUMERIC_OR_NULL_FROM_STRING(int32_t, arrow::Int32Type, INT)
+CAST_NUMERIC_OR_NULL_FROM_STRING(int64_t, arrow::Int64Type, BIGINT)
+CAST_NUMERIC_OR_NULL_FROM_STRING(float, arrow::FloatType, FLOAT4)
+CAST_NUMERIC_OR_NULL_FROM_STRING(double, arrow::DoubleType, FLOAT8)
+
+#undef CAST_NUMERIC_OR_NULL_FROM_STRING
+
 #define GDV_FN_CAST_VARCHAR_INTEGER(IN_TYPE, ARROW_TYPE)                                 \
   GANDIVA_EXPORT                                                                         \
   const char* gdv_fn_castVARCHAR_##IN_TYPE##_int64(int64_t context, gdv_##IN_TYPE value, \
@@ -423,6 +490,18 @@ void ExportedStubFunctions::AddMappings(Engine* engine) const {
                                   types->i8_ptr_type() /*return_type*/, args,
                                   reinterpret_cast<void*>(gdv_fn_dec_to_string));
 
+  // gdv_fn_get_json_object_utf8_utf8
+  args = {types->i64_type(),     // int64_t ptr
+          types->i8_ptr_type(),  // const char* data
+          types->i32_type(),     // int data_len
+          types->i8_ptr_type(),  // const char* pattern
+          types->i32_type(),     // int pattern_len
+          types->i32_ptr_type()};   // int out_len 
+
+  engine->AddGlobalMappingForFunc("gdv_fn_get_json_object_utf8_utf8",
+                                  types->i8_ptr_type() /*return_type*/, args,
+                                  reinterpret_cast<void*>(gdv_fn_get_json_object_utf8_utf8));
+
   // gdv_fn_like_utf8_utf8
   args = {types->i64_type(),     // int64_t ptr
           types->i8_ptr_type(),  // const char* data
@@ -433,6 +512,45 @@ void ExportedStubFunctions::AddMappings(Engine* engine) const {
   engine->AddGlobalMappingForFunc("gdv_fn_like_utf8_utf8",
                                   types->i1_type() /*return_type*/, args,
                                   reinterpret_cast<void*>(gdv_fn_like_utf8_utf8));
+
+  // gdv_fn_like_utf8_utf8_utf8
+  args = {types->i64_type(),     // int64_t ptr
+          types->i8_ptr_type(),  // const char* data
+          types->i32_type(),     // int data_len
+          types->i8_ptr_type(),  // const char* pattern
+          types->i32_type(),     // int pattern_len
+          types->i8_ptr_type(),  // const char* escape_char
+          types->i32_type()};    // int escape_char_len
+
+  engine->AddGlobalMappingForFunc("gdv_fn_like_utf8_utf8_utf8",
+                                  types->i1_type() /*return_type*/, args,
+                                  reinterpret_cast<void*>(gdv_fn_like_utf8_utf8_utf8));
+
+  // gdv_fn_ilike_utf8_utf8
+  args = {types->i64_type(),     // int64_t ptr
+          types->i8_ptr_type(),  // const char* data
+          types->i32_type(),     // int data_len
+          types->i8_ptr_type(),  // const char* pattern
+          types->i32_type()};    // int pattern_len
+
+  engine->AddGlobalMappingForFunc("gdv_fn_ilike_utf8_utf8",
+                                  types->i1_type() /*return_type*/, args,
+                                  reinterpret_cast<void*>(gdv_fn_ilike_utf8_utf8));
+
+  // gdv_fn_regexp_replace_utf8_utf8
+  args = {types->i64_type(),       // int64_t ptr
+          types->i64_type(),       // int64_t holder_ptr
+          types->i8_ptr_type(),    // const char* data
+          types->i32_type(),       // int data_len
+          types->i8_ptr_type(),    // const char* pattern
+          types->i32_type(),       // int pattern_len
+          types->i8_ptr_type(),    // const char* replace_string
+          types->i32_type(),       // int32_t replace_string_len
+          types->i32_ptr_type()};  // int32_t* out_length
+
+  engine->AddGlobalMappingForFunc(
+      "gdv_fn_regexp_replace_utf8_utf8", types->i8_ptr_type() /*return_type*/, args,
+      reinterpret_cast<void*>(gdv_fn_regexp_replace_utf8_utf8));
 
   // gdv_fn_to_date_utf8_utf8
   args = {types->i64_type(),                   // int64_t execution_context
@@ -536,10 +654,28 @@ void ExportedStubFunctions::AddMappings(Engine* engine) const {
 
   args = {types->i64_type(),     // int64_t context_ptr
           types->i8_ptr_type(),  // const char* data
+          types->i32_type(),    // int32_t lenr
+          types->i1_type(),    // bool in2_validity
+          types->ptr_type(types->i8_type())};  // bool* out_valid
+
+  engine->AddGlobalMappingForFunc("gdv_fn_castINT_or_null_utf8", types->i32_type(), args,
+                                  reinterpret_cast<void*>(gdv_fn_castINT_or_null_utf8));
+
+  args = {types->i64_type(),     // int64_t context_ptr
+          types->i8_ptr_type(),  // const char* data
           types->i32_type()};    // int32_t lenr
 
   engine->AddGlobalMappingForFunc("gdv_fn_castBIGINT_utf8", types->i64_type(), args,
                                   reinterpret_cast<void*>(gdv_fn_castBIGINT_utf8));
+  
+  args = {types->i64_type(),     // int64_t context_ptr
+          types->i8_ptr_type(),  // const char* data
+          types->i32_type(),    // int32_t lenr
+          types->i1_type(),    // bool in2_validity
+          types->ptr_type(types->i8_type())};  // bool* out_valid
+
+  engine->AddGlobalMappingForFunc("gdv_fn_castBIGINT_or_null_utf8", types->i64_type(), args,
+                                  reinterpret_cast<void*>(gdv_fn_castBIGINT_or_null_utf8));
 
   args = {types->i64_type(),     // int64_t context_ptr
           types->i8_ptr_type(),  // const char* data
@@ -550,10 +686,28 @@ void ExportedStubFunctions::AddMappings(Engine* engine) const {
 
   args = {types->i64_type(),     // int64_t context_ptr
           types->i8_ptr_type(),  // const char* data
+          types->i32_type(),    // int32_t lenr
+          types->i1_type(),    // bool in2_validity
+          types->ptr_type(types->i8_type())};  // bool* out_valid
+
+  engine->AddGlobalMappingForFunc("gdv_fn_castFLOAT4_or_null_utf8", types->float_type(), args,
+                                  reinterpret_cast<void*>(gdv_fn_castFLOAT4_or_null_utf8));
+
+  args = {types->i64_type(),     // int64_t context_ptr
+          types->i8_ptr_type(),  // const char* data
           types->i32_type()};    // int32_t lenr
 
   engine->AddGlobalMappingForFunc("gdv_fn_castFLOAT8_utf8", types->double_type(), args,
                                   reinterpret_cast<void*>(gdv_fn_castFLOAT8_utf8));
+  
+  args = {types->i64_type(),     // int64_t context_ptr
+          types->i8_ptr_type(),  // const char* data
+          types->i32_type(),    // int32_t lenr
+          types->i1_type(),    // bool in2_validity
+          types->ptr_type(types->i8_type())};  // bool* out_valid
+
+  engine->AddGlobalMappingForFunc("gdv_fn_castFLOAT8_or_null_utf8", types->double_type(), args,
+                                  reinterpret_cast<void*>(gdv_fn_castFLOAT8_or_null_utf8));
 
   // gdv_fn_castVARCHAR_int32_int64
   args = {types->i64_type(),       // int64_t execution_context
