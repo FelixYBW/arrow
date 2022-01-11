@@ -416,4 +416,91 @@ class TypedBufferBuilder<bool> {
   int64_t false_count_ = 0;
 };
 
+/// \brief A BufferBuilder for building a buffer containing a int32_t for offset
+template <>
+class TypedBufferBuilder<int32_t> {
+ public:
+  explicit TypedBufferBuilder(MemoryPool* pool = default_memory_pool())
+      : bytes_builder_(pool) {}
+
+  explicit TypedBufferBuilder(BufferBuilder builder)
+      : bytes_builder_(std::move(builder)) {}
+
+  BufferBuilder* bytes_builder() { return &bytes_builder_; }
+
+  Status Append(int32_t value) {
+    ARROW_RETURN_NOT_OK(Reserve(1));
+    UnsafeAppend(value);
+    return Status::OK();
+  }
+
+  Status Append(const int32_t* values, int64_t num_elements) {
+    ARROW_RETURN_NOT_OK(Reserve(num_elements));
+    UnsafeAppend(values, num_elements);
+    return Status::OK();
+  }
+
+  Status Append(const int64_t num_copies, int32_t value) {
+    ARROW_RETURN_NOT_OK(Reserve(num_copies));
+    UnsafeAppend(num_copies, value);
+    return Status::OK();
+  }
+
+  void UnsafeAppend(int32_t value) {
+    mutable_data()[length()] = value;
+    bytes_builder_.UnsafeAdvance(sizeof(uint32_t));
+  }
+
+  void UnsafeAppend(const int32_t* values, int64_t num_elements) {
+    for (int64_t i = 0; i < num_elements; i++) {
+      UnsafeAppend(values[i]);
+    }
+  }
+
+  void UnsafeAppend(const int64_t num_copies, int32_t value) {
+    for (int64_t i = 0; i < num_copies; i++) {
+      UnsafeAppend(value);
+    }
+  }
+
+  template <typename Iter>
+  void UnsafeAppend(Iter values_begin, Iter values_end) {
+    int64_t num_elements = static_cast<int64_t>(std::distance(values_begin, values_end));
+    auto data = mutable_data() + length();
+    bytes_builder_.UnsafeAdvance(num_elements * sizeof(int32_t));
+    std::copy(values_begin, values_end, data);
+  }
+
+  Status Resize(const int64_t new_capacity, bool shrink_to_fit = true) {
+    return bytes_builder_.Resize(new_capacity * sizeof(int32_t), shrink_to_fit);
+  }
+
+  Status Reserve(const int64_t additional_elements) {
+    return bytes_builder_.Reserve(additional_elements * sizeof(int32_t));
+  }
+
+  Status Advance(const int64_t length) {
+    return bytes_builder_.Advance(length * sizeof(int32_t));
+  }
+
+  Status Finish(std::shared_ptr<Buffer>* out, bool shrink_to_fit = true) {
+    return bytes_builder_.Finish(out, shrink_to_fit);
+  }
+
+  Result<std::shared_ptr<Buffer>> Finish(bool shrink_to_fit = true) {
+    std::shared_ptr<Buffer> out;
+    ARROW_RETURN_NOT_OK(Finish(&out, shrink_to_fit));
+    return out;
+  }
+
+  void Reset() { bytes_builder_.Reset(); }
+
+  int64_t length() const { return bytes_builder_.length() / sizeof(int32_t); }
+  int64_t capacity() const { return bytes_builder_.capacity() / sizeof(int32_t); }
+  const int32_t* data() const { return reinterpret_cast<const int32_t*>(bytes_builder_.data()); }
+  int32_t* mutable_data() { return reinterpret_cast<int32_t*>(bytes_builder_.mutable_data()); }
+
+ private:
+  BufferBuilder bytes_builder_;
+};
 }  // namespace arrow
