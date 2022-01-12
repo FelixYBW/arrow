@@ -23,6 +23,7 @@
 #include <memory>
 #include <string>
 #include <utility>
+#include <xmmintrin.h>
 
 #include "arrow/buffer.h"
 #include "arrow/status.h"
@@ -135,6 +136,7 @@ class ARROW_EXPORT BufferBuilder {
   void UnsafeAppend(const void* data, const int64_t length) {
     memcpy(data_ + size_, data, static_cast<size_t>(length));
     size_ += length;
+    _mm_prefetch(data_ + size_ + 64, _MM_HINT_T0);
   }
 
   void UnsafeAppend(const int64_t num_copies, uint8_t value) {
@@ -315,9 +317,9 @@ class TypedBufferBuilder<bool> {
   }
 
   void UnsafeAppend(bool value) {
-    BitUtil::SetBitTo(mutable_data(), bit_length_, value);
     if (!value) {
       ++false_count_;
+      BitUtil::SetBitTo(mutable_data(), bit_length_, value);
     }
     ++bit_length_;
   }
@@ -334,7 +336,8 @@ class TypedBufferBuilder<bool> {
   }
 
   void UnsafeAppend(const int64_t num_copies, bool value) {
-    BitUtil::SetBitsTo(mutable_data(), bit_length_, num_copies, value);
+    if (!value)
+      BitUtil::SetBitsTo(mutable_data(), bit_length_, num_copies, value);
     false_count_ += num_copies * !value;
     bit_length_ += num_copies;
   }
@@ -364,9 +367,9 @@ class TypedBufferBuilder<bool> {
     // so ask it again before calling memset().
     const int64_t new_byte_capacity = bytes_builder_.capacity();
     if (new_byte_capacity > old_byte_capacity) {
-      // The additional buffer space is 0-initialized for convenience,
-      // so that other methods can simply bump the length.
-      memset(mutable_data() + old_byte_capacity, 0,
+      // The additional buffer space is initialized as true,
+      // so we can ignore the valid set
+      memset(mutable_data() + old_byte_capacity, 0xffffffff,
              static_cast<size_t>(new_byte_capacity - old_byte_capacity));
     }
     return Status::OK();
@@ -381,6 +384,7 @@ class TypedBufferBuilder<bool> {
   Status Advance(const int64_t length) {
     ARROW_RETURN_NOT_OK(Reserve(length));
     bit_length_ += length;
+    BitUtil::SetBitsTo(mutable_data(), bit_length_, length, false);
     false_count_ += length;
     return Status::OK();
   }
@@ -448,7 +452,8 @@ class TypedBufferBuilder<int32_t> {
 
   void UnsafeAppend(int32_t value) {
     mutable_data()[length()] = value;
-    bytes_builder_.UnsafeAdvance(sizeof(uint32_t));
+    _mm_prefetch(mutable_data()+length()+64/sizeof(int32_t), _MM_HINT_T0);
+    bytes_builder_.UnsafeAdvance(sizeof(int32_t));
   }
 
   void UnsafeAppend(const int32_t* values, int64_t num_elements) {
