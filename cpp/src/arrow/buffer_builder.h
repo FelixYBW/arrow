@@ -452,7 +452,7 @@ class TypedBufferBuilder<int32_t> {
 
   void UnsafeAppend(int32_t value) {
     mutable_data()[length()] = value;
-    _mm_prefetch(mutable_data()+length()+64/sizeof(int32_t), _MM_HINT_T0);
+    _mm_prefetch(mutable_data()+length() + 1, _MM_HINT_T0);
     bytes_builder_.UnsafeAdvance(sizeof(int32_t));
   }
 
