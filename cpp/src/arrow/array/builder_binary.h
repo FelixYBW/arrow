@@ -120,6 +120,12 @@ class BaseBinaryBuilder : public ArrayBuilder {
     value_data_builder_.UnsafeAppend(value, length);
     UnsafeAppendToBitmap(true);
   }
+  void UnsafeAppend_fake(const uint8_t* value, offset_type length) {
+    //UnsafeAppendNextOffset();
+    offsets_builder_.bytes_builder()->UnsafeAdvance(sizeof(offset_type));
+    //value_data_builder_.UnsafeAppend(value, length);
+    //UnsafeAppendToBitmap(true);
+  }
 
   void UnsafeAppend(const char* value, offset_type length) {
     UnsafeAppend(reinterpret_cast<const uint8_t*>(value), length);
