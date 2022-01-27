@@ -38,7 +38,7 @@ enum class CompressionType : int8_t {
   MAX = GZIP
 };
 
-inline const CompressionType (&EnumValuesCompressionType())[3] {
+inline const CompressionType (&EnumValuesCompressionType())[4] {
   static const CompressionType values[] = {
     CompressionType::LZ4_FRAME,
     CompressionType::ZSTD,
@@ -49,7 +49,7 @@ inline const CompressionType (&EnumValuesCompressionType())[3] {
 }
 
 inline const char * const *EnumNamesCompressionType() {
-  static const char * const names[4] = {
+  static const char * const names[5] = {
     "LZ4_FRAME",
     "ZSTD",
     "FASTPFOR",
