@@ -100,6 +100,21 @@ class ARROW_EXPORT MemoryPool {
   /// The name of the backend used by this MemoryPool (e.g. "system" or "jemalloc").
   virtual std::string backend_name() const = 0;
 
+  virtual Status AlignAllocate(int64_t size, uint8_t** out, size_t alignment)
+  {
+    return Allocate(size, out);
+  }
+
+  virtual Status AlignReallocate(int64_t old_size, int64_t new_size, uint8_t** ptr, size_t alignment)
+  {
+    return Reallocate(old_size, new_size, ptr);
+  }
+
+  virtual void Free(uint8_t* buffer, int64_t size, size_t alignment)
+  {
+    Free(buffer, size);
+  }
+
  protected:
   MemoryPool() = default;
 };

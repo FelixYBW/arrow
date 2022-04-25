@@ -183,7 +183,7 @@ class SystemAllocator {
  public:
   // Allocate memory according to the alignment requirements for Arrow
   // (as of May 2016 64 bytes)
-  static Status AllocateAligned(int64_t size, uint8_t** out) {
+  static Status AllocateAligned(int64_t size, uint8_t** out, size_t alignment = kAlignment) {
     if (size == 0) {
       *out = zero_size_area;
       return Status::OK();
@@ -191,34 +191,34 @@ class SystemAllocator {
 #ifdef _WIN32
     // Special code path for Windows
     *out = reinterpret_cast<uint8_t*>(
-        _aligned_malloc(static_cast<size_t>(size), kAlignment));
+        _aligned_malloc(static_cast<size_t>(size), alignment));
     if (!*out) {
       return Status::OutOfMemory("malloc of size ", size, " failed");
     }
 #elif defined(sun) || defined(__sun)
-    *out = reinterpret_cast<uint8_t*>(memalign(kAlignment, static_cast<size_t>(size)));
+    *out = reinterpret_cast<uint8_t*>(memalign(alignment, static_cast<size_t>(size)));
     if (!*out) {
       return Status::OutOfMemory("malloc of size ", size, " failed");
     }
 #else
-    const int result = posix_memalign(reinterpret_cast<void**>(out), kAlignment,
+    const int result = posix_memalign(reinterpret_cast<void**>(out), alignment,
                                       static_cast<size_t>(size));
     if (result == ENOMEM) {
       return Status::OutOfMemory("malloc of size ", size, " failed");
     }
 
     if (result == EINVAL) {
-      return Status::Invalid("invalid alignment parameter: ", kAlignment);
+      return Status::Invalid("invalid alignment parameter: ", alignment);
     }
 #endif
     return Status::OK();
   }
 
-  static Status ReallocateAligned(int64_t old_size, int64_t new_size, uint8_t** ptr) {
+  static Status ReallocateAligned(int64_t old_size, int64_t new_size, uint8_t** ptr, size_t alignment = kAlignment) {
     uint8_t* previous_ptr = *ptr;
     if (previous_ptr == zero_size_area) {
       DCHECK_EQ(old_size, 0);
-      return AllocateAligned(new_size, ptr);
+      return AllocateAligned(new_size, ptr, alignment);
     }
     if (new_size == 0) {
       DeallocateAligned(previous_ptr, old_size);
@@ -229,7 +229,7 @@ class SystemAllocator {
 
     // Allocate new chunk
     uint8_t* out = nullptr;
-    RETURN_NOT_OK(AllocateAligned(new_size, &out));
+    RETURN_NOT_OK(AllocateAligned(new_size, &out, alignment));
     DCHECK(out);
     // Copy contents and release old memory chunk
     memcpy(out, *ptr, static_cast<size_t>(std::min(new_size, old_size)));
@@ -242,7 +242,7 @@ class SystemAllocator {
     return Status::OK();
   }
 
-  static void DeallocateAligned(uint8_t* ptr, int64_t size) {
+  static void DeallocateAligned(uint8_t* ptr, int64_t size, size_t alignment = kAlignment) {
     if (ptr == zero_size_area) {
       DCHECK_EQ(size, 0);
     } else {
@@ -260,20 +260,20 @@ class SystemAllocator {
 // Helper class directing allocations to the jemalloc allocator.
 class JemallocAllocator {
  public:
-  static Status AllocateAligned(int64_t size, uint8_t** out) {
+  static Status AllocateAligned(int64_t size, uint8_t** out, size_t alignment = kAlignment) {
     if (size == 0) {
       *out = zero_size_area;
       return Status::OK();
     }
     *out = reinterpret_cast<uint8_t*>(
-        mallocx(static_cast<size_t>(size), MALLOCX_ALIGN(kAlignment)));
+        mallocx(static_cast<size_t>(size), MALLOCX_ALIGN(alignment)));
     if (*out == NULL) {
       return Status::OutOfMemory("malloc of size ", size, " failed");
     }
     return Status::OK();
   }
 
-  static Status ReallocateAligned(int64_t old_size, int64_t new_size, uint8_t** ptr) {
+  static Status ReallocateAligned(int64_t old_size, int64_t new_size, uint8_t** ptr, size_t alignment = kAlignment) {
     uint8_t* previous_ptr = *ptr;
     if (previous_ptr == zero_size_area) {
       DCHECK_EQ(old_size, 0);
@@ -285,7 +285,7 @@ class JemallocAllocator {
       return Status::OK();
     }
     *ptr = reinterpret_cast<uint8_t*>(
-        rallocx(*ptr, static_cast<size_t>(new_size), MALLOCX_ALIGN(kAlignment)));
+        rallocx(*ptr, static_cast<size_t>(new_size), MALLOCX_ALIGN(alignment)));
     if (*ptr == NULL) {
       *ptr = previous_ptr;
       return Status::OutOfMemory("realloc of size ", new_size, " failed");
@@ -293,11 +293,11 @@ class JemallocAllocator {
     return Status::OK();
   }
 
-  static void DeallocateAligned(uint8_t* ptr, int64_t size) {
+  static void DeallocateAligned(uint8_t* ptr, int64_t size, size_t alignment = kAlignment) {
     if (ptr == zero_size_area) {
       DCHECK_EQ(size, 0);
     } else {
-      dallocx(ptr, MALLOCX_ALIGN(kAlignment));
+      dallocx(ptr, MALLOCX_ALIGN(alignment));
     }
   }
 };
@@ -373,13 +373,26 @@ class BaseMemoryPoolImpl : public MemoryPool {
   ~BaseMemoryPoolImpl() override {}
 
   Status Allocate(int64_t size, uint8_t** out) override {
+    return AlignAllocate(size, out, kAlignment);
+  }
+
+  Status Reallocate(int64_t old_size, int64_t new_size, uint8_t** ptr) override {
+    return AlignReallocate(old_size, new_size, ptr, kAlignment);
+  }
+
+  void Free(uint8_t* buffer, int64_t size) override {
+    Free(buffer, size, kAlignment);
+  }
+
+  Status AlignAllocate(int64_t size, uint8_t** out, size_t alignment)
+  {
     if (size < 0) {
       return Status::Invalid("negative malloc size");
     }
     if (static_cast<uint64_t>(size) >= std::numeric_limits<size_t>::max()) {
       return Status::CapacityError("malloc size overflows size_t");
     }
-    RETURN_NOT_OK(Allocator::AllocateAligned(size, out));
+    RETURN_NOT_OK(Allocator::AllocateAligned(size, out, alignment));
 #ifndef NDEBUG
     // Poison data
     if (size > 0) {
@@ -393,14 +406,15 @@ class BaseMemoryPoolImpl : public MemoryPool {
     return Status::OK();
   }
 
-  Status Reallocate(int64_t old_size, int64_t new_size, uint8_t** ptr) override {
+  Status AlignReallocate(int64_t old_size, int64_t new_size, uint8_t** ptr, size_t alignment)
+  {
     if (new_size < 0) {
       return Status::Invalid("negative realloc size");
     }
     if (static_cast<uint64_t>(new_size) >= std::numeric_limits<size_t>::max()) {
       return Status::CapacityError("realloc overflows size_t");
     }
-    RETURN_NOT_OK(Allocator::ReallocateAligned(old_size, new_size, ptr));
+    RETURN_NOT_OK(Allocator::ReallocateAligned(old_size, new_size, ptr, alignment));
 #ifndef NDEBUG
     // Poison data
     if (new_size > old_size) {
@@ -414,7 +428,8 @@ class BaseMemoryPoolImpl : public MemoryPool {
     return Status::OK();
   }
 
-  void Free(uint8_t* buffer, int64_t size) override {
+  virtual void Free(uint8_t* buffer, int64_t size, size_t alignment)
+  {
 #ifndef NDEBUG
     // Poison data
     if (size > 0) {
@@ -423,7 +438,7 @@ class BaseMemoryPoolImpl : public MemoryPool {
       buffer[size - 1] = kDeallocPoison;
     }
 #endif
-    Allocator::DeallocateAligned(buffer, size);
+    Allocator::DeallocateAligned(buffer, size, alignment);
 
     stats_.UpdateAllocatedBytes(-size);
   }
@@ -501,7 +516,6 @@ Status mimalloc_memory_pool(MemoryPool** out) {
   return Status::NotImplemented("This Arrow build does not enable mimalloc");
 #endif
 }
-
 MemoryPool* default_memory_pool() {
   auto backend = DefaultBackend();
   switch (backend) {
